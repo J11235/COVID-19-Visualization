@@ -3,6 +3,17 @@ import numpy as np
 import os
 
 
+def data_check():
+    if not os.path.exists('../COVID-19'):
+        print('开始clone数据仓库COVID-19...')
+        from git import Repo
+        Repo.clone_from(
+            'https: // github.com/CSSEGISandData/COVID-19.git', '../COVID-19')
+        print('clone完成')
+
+data_check()
+
+
 def fix_values( values):
         ans = []
         for value in values:
@@ -12,16 +23,21 @@ def fix_values( values):
                 ans.append(ans[-1])
         return ans
 
-def new_confirmed(data):
+def get_new_confirmed(data):
         values = data['Confirmed'].values
         new_confirmed = values[1:] - values[:-1]
         new_confirmed = [values[0]] + new_confirmed.tolist()
         new_confirmed = [i if i > 0 else 0 for i in new_confirmed]
         return new_confirmed
 
+
+def get_active(data):
+        values = data['Confirmed'] - data['Deaths'] - data['Recovered']
+        return values
+
 def fill_data(group, dates):
     try:
-        group.sort_values('updateDate', inplace=True)
+        group = group.sort_values('updateDate')
         valid_dates = group['updateDate'].values.tolist()
         begin_date = min(valid_dates)
         group.set_index('updateDate', inplace=True)
@@ -35,13 +51,13 @@ def fill_data(group, dates):
         group.reset_index('updateDate', inplace=True, drop=False)
 
         #修正这三项数据，保持单调递增
-        group['Confirmed'] = fix_values(
+        group.loc[:, 'Confirmed'] = fix_values(
             group['Confirmed'].values)
-        group['Deaths'] = fix_values(group['Deaths'].values)
-        group['Deaths'] = fix_values(group['Deaths'].values)
+        group.loc[:, 'Deaths'] = fix_values(group['Deaths'].values)
+        group.loc[:, 'Deaths'] = fix_values(group['Deaths'].values)
 
         # 新增确诊
-        group['newConfirmed'] = new_confirmed(group)
+        group['newConfirmed'] = get_new_confirmed(group)
     except Exception as e:
         print('fill value error', e)
 
@@ -63,7 +79,9 @@ def archive_data(country='US'):
         all_data.append(data)
 
     # 城市数据
-    city_data = pd.concat(all_data, axis=0)
+    city_data = pd.concat(all_data, axis=0, sort=False)
+    city_data['Active'] = get_active(city_data)
+    city_data = city_data.sort_values(['Admin2', 'Last_Update'])
     city_data.to_csv(f'data/{country}_city_data.csv', index=None)
 
     # 所有的日期
@@ -75,10 +93,9 @@ def archive_data(country='US'):
         'Confirmed', 'Deaths', 'Recovered',	'Active'].sum()
     state_data.sort_index(inplace=True)
     state_data.reset_index(inplace=True)
-    # import pdb;pdb.set_trace()
     # state_data = state_data.groupby('Province_State').apply(lambda x: fill_data(x, dates))
     grouped = state_data.groupby('Province_State')
-    print(grouped.size())
+
     ans = []
     for name, group in grouped:
         try:
@@ -86,14 +103,16 @@ def archive_data(country='US'):
             ans.append(tmp)
         except Exception as e:
             print(e)
-    state_data = pd.concat(ans, axis=0)
-    state_data.reset_index(inplace=True)
-    state_data.sort_values(['Province_State', 'updateDate'], inplace=True)
-    state_data.rename(columns={'Province_State': 'provinceName'}, inplace=True)
-    state_data.to_csv(f'data/{country}_province_data.csv', index=None)
-
+    if ans:
+        state_data = pd.concat(ans, axis=0, sort=False)
+        state_data.reset_index(inplace=True)
+        state_data = state_data.sort_values(['Province_State', 'updateDate'])
+        state_data.rename(columns={'Province_State': 'provinceName'}, inplace=True)
+        state_data.to_csv(f'data/{country}_province_data.csv', index=None)
+    else:
+        print('Province_State 为空值，无法提取省/州数据')
 
 if __name__ == '__main__':
-    # archive_data('US')
-    archive_data('Italy')
-
+    archive_data('US')
+    # archive_data('Italy')
+    # archive_data('Germany')

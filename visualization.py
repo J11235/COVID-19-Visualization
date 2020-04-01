@@ -70,7 +70,8 @@ class Visualization:
 
     def get_one_day_data(self, date):
         subdata = self.data.loc[self.data['updateDate'] == date]
-        subdata.sort_values(self.datatype, ascending=False, inplace=True)
+        subdata = subdata.sort_values(
+            self.datatype, ascending=False)
         values = subdata[self.datatype].values.tolist()
         english_names = None
         if self.maptype == 'world':
@@ -97,6 +98,8 @@ class Visualization:
     def get_day_chart(self, date: str):
         names, english_names, values, top10_names, top10_values = self.get_one_day_data(
             date)
+        if sum(values) == 0:
+            raise ZeroDivisionError
         if self.maptype == 'world':
             min_data, max_data = 0, max(values)
         elif self.maptype == 'china-cities':
@@ -123,7 +126,7 @@ class Visualization:
             .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
             .set_global_opts(
                 title_opts=opts.TitleOpts(
-                    title=f"{date}: "+self.map_title, pos_left='35%', title_textstyle_opts=opts.TextStyleOpts(color='white')),
+                    title=f"{date}: "+self.map_title, pos_left='35%', pos_top="2%", title_textstyle_opts=opts.TextStyleOpts(color='white')),
             )
         )
 
@@ -138,7 +141,7 @@ class Visualization:
                 # xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(is_show=False)),
                 # yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(is_show=False)),
                 title_opts=opts.TitleOpts(
-                    title=self.line_title, pos_left="5%", pos_top="5%", title_textstyle_opts=opts.TextStyleOpts(color='white')
+                    title=self.line_title, pos_left="5%", pos_top="2%", title_textstyle_opts=opts.TextStyleOpts(color='white')
                 )
             )
         )
@@ -166,7 +169,7 @@ class Visualization:
                 visualmap_opts=opts.VisualMapOpts(
                     is_calculable=True,
                     dimension=0,
-                    pos_right="10%",
+                    pos_right="5%",
                     pos_top="top",
                     range_text=["High", "Low"],
                     range_color=["lightskyblue", "yellow", "orangered"],
@@ -185,7 +188,15 @@ class Visualization:
         if self.maptype == 'world':
             center = ["68%", "87%"]
             pos_left = "62%"
-            pos_top = "67%"
+            pos_top = "65%"
+        elif self.maptype == 'china-cities':
+            center = ["82%", "83%"]
+            pos_left = "76%"
+            pos_top = "65%"
+        elif self.maptype == 'china':
+            center = ["85%", "63%"]
+            pos_left = "80%"
+            pos_top = "43%"
         else:
             center = ["85%", "85%"]
             pos_left = "79%"
@@ -234,31 +245,40 @@ class Visualization:
         return grid_chart
 
 
-def main(datatype='Confirmed', increment_update=False, maptype='china-cities', save_png=False):
-    visual_data = Visualization(datatype=datatype, increment_update=increment_update, maptype=maptype)
-    dates = visual_data.dates
+def get_visualization(datatype='Confirmed', increment_update=False, maptype='china-cities', save_png=False):
+    v = Visualization(datatype=datatype, increment_update=increment_update, maptype=maptype)
+    dates = v.dates
+    dates = dates+dates[-1:]*3
+    
+    # 增量更新图片
     if increment_update:
-        date = dates[-1]
-        g = visual_data.get_day_chart(date=date)
-        if save_png:
-            make_snapshot(snapshot, g.render(),
-                          f"fig/png/COVID-19_{datatype}_{maptype}_{date}.png")
+        for date in dates:
+            if not os.path.exists(f"fig/png/COVID-19_{datatype}_{maptype}_{date}.png"):
+                chart = v.get_day_chart(date=date)
+                make_snapshot(snapshot, chart.render(),
+                                f"fig/png/COVID-19_{datatype}_{maptype}_{date}.png")
     else:
         timeline = Timeline(
             init_opts=opts.InitOpts(
                 width="1440px", height="800px", theme=ThemeType.DARK)
         )
         for date in dates:
-            g = visual_data.get_day_chart(date=date)
-            timeline.add(g, time_point=date[6:])
-            if save_png:
-                make_snapshot(snapshot, g.render(), f"fig/png/COVID-19_{datatype}_{maptype}_{date}.png")
+            if date <= '2020-01-23':
+                continue
+            try:
+                chart = v.get_day_chart(date=date)
+                timeline.add(chart, time_point=date[6:])
+                if save_png:
+                    make_snapshot(snapshot, chart.render(
+                    ), f"fig/png/COVID-19_{datatype}_{maptype}_{date}.png")
+            except Exception as e:
+                print('get char error', date, e)
 
         timeline.add_schema(
             orient="vertical",
             is_auto_play=True,
             is_inverse=True,
-            play_interval=5000,
+            play_interval=1000, #播放间隔1000ms
             pos_left="null",
             pos_right="5",
             pos_top="20",
@@ -267,24 +287,17 @@ def main(datatype='Confirmed', increment_update=False, maptype='china-cities', s
             label_opts=opts.LabelOpts(is_show=True, color="#fff"),
         )
 
-        timeline.render(f"fig/html/COVID-19-{maptype}-{datatype}.html")
+        timeline.render(f"fig/html/COVID-19_{maptype}_{datatype}.html")
 
-def main_v2():
+
+def all_visualization():
     for maptype in ['china', 'world', '美国']:
         for datatype in ['Confirmed', 'newConfirmed', 'Active']:
-            main(datatype=datatype, maptype=maptype, save_png=True, increment_update=False)
+            get_visualization(datatype=datatype, maptype=maptype, save_png=False, increment_update=False)
+
 
 if __name__ == "__main__":
-    # main(datatype='Confirmed', maptype='china-cities')
-    # main(datatype='Confirmed', maptype='china')
-    # main(datatype='Active', maptype='china')
+    # get_visualization(datatype='Confirmed', maptype='美国', save_png=True)
+    get_visualization(datatype='Active', maptype='world', save_png=True)
 
-    # main(datatype='Confirmed', maptype='world')
-
-    # main(datatype='Confirmed', maptype='美国')
-
-    # main(datatype='Deaths')
-    # main(datatype='Recovered')
-    # main(datatype='Active')
-    # main(datatype='newConfirmed')
-    main_v2()
+    # all_visualization()
